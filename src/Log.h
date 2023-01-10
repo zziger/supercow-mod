@@ -5,6 +5,8 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
+#include <windows.h>
 
 class Log
 {
@@ -13,7 +15,8 @@ class Log
         INFO,
         DEBUG,
         WARN,
-        ERR
+        ERR,
+        GAME
     } type = INFO;
     
     typedef Log& (*LogFn)(Log&);
@@ -39,6 +42,7 @@ public:
         LIGHT_PURPLE = PURPLE | FOREGROUND_INTENSITY,
         LIGHT_YELLOW = YELLOW | FOREGROUND_INTENSITY,
         LIGHT_WHITE = WHITE | FOREGROUND_INTENSITY,
+        BLACK = 0,
         GRAY = FOREGROUND_INTENSITY,
     };
     
@@ -57,7 +61,9 @@ public:
 
     Log& Put(const Color& val)
     {
-        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), val);
+        const auto hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        FlushConsoleInputBuffer(hConsole);
+        SetConsoleTextAttribute(hConsole, val);
         return *this;
     }
     
@@ -112,6 +118,15 @@ public:
             return Instance().SetType(ERR).Put(Prefix).Put(val);
         }
     } Error{};
+
+    static constexpr struct Log_Game
+    {
+        template<class T>
+        Log& operator<<(const T& val) const
+        {
+            return Instance().SetType(GAME).Put(Prefix).Put(val);
+        }
+    } Game{};
     
     static Log& Prefix(Log& log)
     {
@@ -122,10 +137,11 @@ public:
         TimeDateString << std::put_time(&newTimeHandle, "[%H:%M:%S] ");
         log << GRAY << TimeDateString.str();
         switch (log.type) {
-            case INFO: log << LIGHT_CYAN << "[INFO] " << WHITE; break;
+            case INFO: log << LIGHT_CYAN << "[INFO]  " << WHITE; break;
             case DEBUG: log << LIGHT_PURPLE << "[DEBUG] " << WHITE; break;
-            case WARN: log << LIGHT_YELLOW << "[WARN] "; break;
-            case ERR: log << LIGHT_RED << "[ERR] "; break;
+            case WARN: log << LIGHT_YELLOW << "[WARN]  "; break;
+            case ERR: log << LIGHT_RED << "[ERROR] "; break;
+            case GAME: log << CYAN << "[GAME]  " << GRAY; break;
         }
         return log;
     }

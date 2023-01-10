@@ -1,83 +1,93 @@
 #include <iostream>
 #include <locale>
 #include <Windows.h>
+#include <shellapi.h>
 #include <thread>
 
-#include "CMemory.h"
 #include "Utils.h"
 #include "main.h"
 
 #include <filesystem>
-#include <memory>
+#include <yaml-cpp/yaml.h>
 
-#include "CConfig.h"
-#include "CConsole.h"
-#include "CGameApis.h"
-#include "CModLoader.h"
+#include "Config.h"
+#include "Console.h"
+#include "CrashHandler.h"
+#include "ui/UI.h"
 #include "Log.h"
+#include "events/EventManager.h"
+#include "events/ResolveFileEvent.h"
+#include "events/GameLoadedEvent.h"
+#include "memory/HookManager.h"
+#include "memory/Memory.h"
+#include "modloader/mods/files/ModFileResolver.h"
+#include "modloader/mods/ModManager.h"
+#include "sdk/Game.h"
 
-#include "patches/CAllowMultipleInstances.h"
-#include "patches/CRenderUnfocused.h"
-#include "patches/CWidescreenFix.h"
-#include "patches/CAdditionalMusic.h"
-#include "patches/CEditor.h"
-#include "patches/CFpsLimit.h"
-
-#include "mods/CPowerupsKill.h"
-#include "mods/CLadno.h"
-#include "mods/CStartupSplash.h"
-#include "mods/CEarlyStats.h"
-#include "mods/CExtendGroundsLimit.h"
-
-DWORD WINAPI Init() {
-    auto cwd = std::filesystem::current_path();
-    CConfig::Instance().Initialize(cwd);
-    CConsole::Initialize();
-    Log::Info << "Initializing SuperMod " << VERSION << " by zziger..." << Log::Endl;
-    
+void init_memory() {
     const auto base = (uintptr_t) GetModuleHandle(nullptr);
     
-    CMemory::Base() = base;
-    CMemory::OnPatternNotFound([](const std::string& pattern) {
+    Memory::Base() = base;
+    Memory::OnPatternNotFound([](const std::string& pattern) {
         Log::Error << "Failed to find pattern " << pattern << Log::Endl;
     });
-
-    CGameApis::InitializeThis();
-    MH_Initialize();
-    CMemory::RunHooks();
-    
-    CModuleManager::RegisterModules({
-        new CAllowMultipleInstances,
-        new CRenderUnfocused,
-        new CFpsLimit,
-        new CWidescreenFix,
-        // new CEditor,
-        new CAdditionalMusic,
-        
-        new CStartupSplash,
-        new CPowerupsKill,
-        new CLadno,
-        new CEarlyStats,
-        new CExtendGroundsLimit
-    });
-    CModuleManager::Initialize();
-    CModuleManager::LogModules();
-    CModLoader::Instance().Initialize();
-    
-    return true;
+    Memory::InitCacheStorage(new MemoryCacheStorage());
 }
 
-BOOL APIENTRY main(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
-    if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
-        Init();
-        // CreateThread(0, 0, Init, hModule, 0, 0);
+void init() {
+    auto cwd = std::filesystem::current_path();
+    Config::Init(); 
+    Console::Initialize();
+    Log::Info << "Загрузка SuperMod " << VERSION << " by zziger..." << Log::Endl;
+
+    MH_Initialize();
+    sdk::Game::Init();
+    Memory::RunHooks();
+
+    ModManager::Init();
+    ModManager::LoadMods();
+    ModFileResolver::Init();
+    EventManager::Emit(ReadyEvent());
+    
+    EventManager::On<GameLoadedEvent>([] {
+        Log::Info << "Game startup!" << Log::Endl;
+        
+        ModManager::ReloadIcons();
+        DragAcceptFiles(*sdk::Game::window, true);
+    });
+
+    
+    EventManager::On<WindowEvent>([](auto ev) {
+        if (ev.msg == WM_DROPFILES) {
+            auto drop = (HDROP) (ev.wParam);
+            
+            uint32_t nCntFiles= DragQueryFileA( drop, -1, 0,0 );
+            Log::Debug << nCntFiles << Log::Endl;
+                      
+            for (int j=0; j<nCntFiles; j++ ) {
+                char szBuf[MAX_PATH];
+                ::DragQueryFileA( drop, j, szBuf, sizeof(szBuf) );
+                Log::Debug << szBuf << Log::Endl;
+            }
+
+            DragFinish(drop);
+        }
+    });
+}
+
+BOOL APIENTRY main(HMODULE, const DWORD ulReasonForCall, LPVOID) {
+    if (ulReasonForCall == DLL_PROCESS_ATTACH) {
+        init_memory();
+        init_crash_handler();
+        init();
 
         Log::Info << "Mod initialized!" << Log::Endl;
     }
 
-    if (ul_reason_for_call == DLL_PROCESS_DETACH) {
-        CConsole::Destroy();
+    if (ulReasonForCall == DLL_PROCESS_DETACH) {
+        Console::Disable();
         ShowWindow(GetConsoleWindow(), SW_HIDE);
     }
+    
     return TRUE;
 }

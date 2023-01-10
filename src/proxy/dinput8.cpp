@@ -33,7 +33,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 				GetSystemDirectory(path, MAX_PATH);
 				std::wstring pathname = path + std::wstring(L"\\dinput8.dll");
 				dinput8.dll = LoadLibrary(pathname.c_str());
-				if (dinput8.dll == false)
+				if (dinput8.dll == nullptr)
 				{
 					MessageBox(0, L"Cannot load original dinput8.dll library", L"Proxy", MB_ICONERROR);
 					ExitProcess(0);

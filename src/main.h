@@ -1,4 +1,4 @@
 #pragma once
-#include "CMemory.h"
+#include "Memory.h"
 
-BOOL APIENTRY main(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved);
+BOOL APIENTRY main(HMODULE hModule, DWORD ulReasonForCall, LPVOID lpReserved);
